@@ -20,6 +20,69 @@ class AgentState(TypedDict, total=False):
     verdict: str
     revision_count: int
     max_revisions: int
+    selected_template: str
+    selected_template_name: str
+
+def build_template_store():
+    TEMPLATES = {
+        "sponsorship": {
+            "text": """Dear {Recipient_Name},
+
+I hope this message finds you well. I'm reaching out on behalf of {org_name} regarding {Context}.
+
+{Key_Points}
+
+{Call_To_Action}
+
+Best regards,
+{sender_name}""",
+            "description": "For sponsorship requests"
+        },
+        "collaboration": {
+            "text": """Hi {Recipient_Name},
+
+{Context}
+
+We believe this partnership could {Key_Points}.
+
+{Call_To_Action}
+
+Looking forward to connecting,
+{sender_name}""",
+            "description": "For collaboration proposals"
+        },
+        "cold_outreach": {
+            "text": """Dear {Recipient_Name},
+
+My name is {sender_name} from {org_name}.
+
+{Context}
+
+{Key_Points}
+
+{Call_To_Action}
+
+Warm regards,
+{sender_name}""",
+            "description": "For cold outreach"
+        }
+    }
+    documents = [
+        Document(
+            page_content=template["text"],
+            metadata={"name": name, "description": template["description"]}
+        )
+        for name, template in TEMPLATES.items()
+    ]
+
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model = "gemini-2.5-flash",
+        google_api_key = API_KEY
+    )
+    
+    Chroma.from_documents(documents, embeddings, persist_directory="./chroma_db")
+    print("Success!")
+
 
 
 llm = ChatGoogleGenerativeAI(        
@@ -41,6 +104,24 @@ Return only bullet points.
 """
     plan = llm.invoke(prompt).content
     return {"plan": plan}
+
+def template_selector_node(state: AgentState):
+    vectordb = Chroma(
+        persist_directory = "./chroma_db",
+        embedding_function = GoogleGenerativeAIEmbeddings(model="gemini-2.5-flash", api_key=API_KEY),
+    )
+    results = vectordb.similarity_search(state['task'], k=1)
+    if results:
+        selected_doc = results[0]
+        return {
+            "selected_template": selected_doc.page_content,
+            "selected_template_name": selected_doc.metadata.get("name", "unknown")
+        }
+    else:
+        return {
+            "selected_template": "",
+            "selected_template_name": "none"
+        }
 
 
 def writer_node(state: AgentState):
