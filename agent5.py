@@ -1,11 +1,17 @@
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_chroma import Chroma
+from langchain.schema import Document
+from dotenv import load_dotenv
+from os import environ
 
+load_dotenv()
 
-# ----------------------------
-# 1) Define shared state
-# ----------------------------
+API_KEY = environ.get("API_KEY")
+
+SYSTEM_TEMPLATE = """"You are a high-precision AI Email Architect. Your goal is to convert loosely structured key-value data (header-content, header-content) into professional emails using pre-defined templates. Parse input using the : separator to map headers to values. Identify: Recipient_Name, Context, Key_Points, Call_To_Action, and Desired_Tone. You must perform a self-correction loop internally before providing the final response. Step A: Generate an initial draft based on the most relevant template. Step B: Score the draft (1-10) on clarity, tone, and structure. Step C: If the score is <8.5, rewrite the email to address the specific weaknesses. Step D: Repeat until the score is ≥8.5. You must return your response in the following JSON schema: \"draft_1\": \"...\", \"critique\": \"...\", \"final_email\": \"...\" " """
+
 class AgentState(TypedDict, total=False):
     task: str
     plan: str
@@ -16,18 +22,12 @@ class AgentState(TypedDict, total=False):
     max_revisions: int
 
 
-# ----------------------------
-# 2) Initialize Gemini
-# ----------------------------
 llm = ChatGoogleGenerativeAI(        
     model="gemini-2.5-flash",
     temperature=0,
+    api_key=API_KEY
 )
 
-
-# ----------------------------
-# 3) Define AI Nodes
-# ----------------------------
 def planner_node(state: AgentState):
 
     prompt = f"""
@@ -99,10 +99,6 @@ def increment_revision(state: AgentState):
         "revision_count": state.get("revision_count", 0) + 1
     }
 
-
-# ----------------------------
-# 4) Routing Logic
-# ----------------------------
 def should_continue(state: AgentState):
     if state.get("verdict") == "PASS":
         return "end"
@@ -113,9 +109,6 @@ def should_continue(state: AgentState):
     return "revise"
 
 
-# ----------------------------
-# 5) Build Graph
-# ----------------------------
 builder = StateGraph(AgentState)
 
 builder.add_node("planner", planner_node)
@@ -141,15 +134,11 @@ builder.add_edge("increment", "writer")
 
 graph = builder.compile()
 
-
-# ----------------------------
-# 6) Run It
-# ----------------------------
 if __name__ == "__main__":
     result = graph.invoke({
-        "task": "I have a spring festival (Chinese New Year) coming up, and my life has been really busy recently. What is the best way I can relax, and I can give a gift to my mom considering she is in China, and I am at the University of Michigan?",
+        "task": "You are a high-precision AI Email Architect. Your goal is to convert loosely structured key-value data (header-content, header-content) into professional emails using pre-defined templates. Parse input using the : separator to map headers to values. Identify: Recipient_Name, Context, Key_Points, Call_To_Action, and Desired_Tone. You must perform a self-correction loop internally before providing the final response. Step A: Generate an initial draft based on the most relevant template. Step B: Score the draft (1-10) on clarity, tone, and structure. Step C: If the score is <8.5, rewrite the email to address the specific weaknesses. Step D: Repeat until the score is ≥8.5. You must return your response in the following JSON schema: \"draft_1\": \"...\", \"critique\": \"...\", \"final_email\": \"...\" ",
         "revision_count": 0,
-        "max_revisions": 10
+        "max_revisions": 3
     })
 
     print("\n===== PLAN =====\n")
