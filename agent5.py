@@ -3,6 +3,8 @@ from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 from langchain.schema import Document
+from langchain_core.output_parsers import JsonOutputParser
+from pydantic import BaseModel
 from dotenv import load_dotenv
 from os import environ
 
@@ -196,10 +198,12 @@ builder.add_node("planner", planner_node)
 builder.add_node("writer", writer_node)
 builder.add_node("critic", critic_node)
 builder.add_node("increment", increment_revision)
+builder.add_node("template_selector", template_selector_node)
 
 builder.set_entry_point("planner")
 
-builder.add_edge("planner", "writer")
+builder.add_edge("planner", "template_selector")
+builder.add_edge("template_selector", "writer")
 builder.add_edge("writer", "critic")
 
 builder.add_conditional_edges(
