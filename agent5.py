@@ -1,14 +1,37 @@
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
+import google.generativeai as genai
+from langchain_core.embeddings import Embeddings
 from langchain_chroma import Chroma
-from langchain.schema import Document
+from langchain_core.documents import Document
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from os import environ
 
 load_dotenv()
+
+class GeminiEmbeddings(Embeddings):
+    def __init__(self, api_key: str):
+        genai.configure(api_key=api_key)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [
+            genai.embed_content(
+                model="models/text-embedding-004",
+                content=text,
+                task_type="retrieval_document"
+            )["embedding"]
+            for text in texts
+        ]
+
+    def embed_query(self, text: str) -> list[float]:
+        return genai.embed_content(
+            model="models/text-embedding-004",
+            content=text,
+            task_type="retrieval_query"
+        )["embedding"]
 
 API_KEY = environ.get("API_KEY")
 
@@ -77,10 +100,7 @@ Warm regards,
         for name, template in TEMPLATES.items()
     ]
 
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model = "gemini-2.5-flash",
-        google_api_key = API_KEY
-    )
+    embeddings = GeminiEmbeddings(api_key=API_KEY)
     
     Chroma.from_documents(documents, embeddings, persist_directory="./chroma_db")
     print("Success!")
@@ -90,7 +110,7 @@ Warm regards,
 llm = ChatGoogleGenerativeAI(        
     model="gemini-2.5-flash",
     temperature=0,
-    api_key=API_KEY
+    google_api_key=API_KEY
 )
 
 def planner_node(state: AgentState):
@@ -110,7 +130,8 @@ Return only bullet points.
 def template_selector_node(state: AgentState):
     vectordb = Chroma(
         persist_directory = "./chroma_db",
-        embedding_function = GoogleGenerativeAIEmbeddings(model="gemini-2.5-flash", api_key=API_KEY),
+        embedding_function = GeminiEmbeddings(api_key=API_KEY),
+
     )
     results = vectordb.similarity_search(state['task'], k=1)
     if results:
